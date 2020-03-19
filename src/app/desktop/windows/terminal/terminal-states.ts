@@ -92,6 +92,9 @@ export class DefaultTerminalState extends CommandTerminalState {
     'connect': this.connect.bind(this),
     'network': this.network.bind(this),
     'info': this.info.bind(this),
+    'run': this.run.bind(this),
+    'change_content': this.changeContent.bind(this),
+    'random': this.random.bind(this),
 
     // easter egg
     'chaozz': () => {
@@ -133,8 +136,8 @@ export class DefaultTerminalState extends CommandTerminalState {
   }
 
   constructor(protected websocket: WebsocketService, private settings: SettingsService, private fileService: FileService,
-              private domSanitizer: DomSanitizer, protected terminal: TerminalAPI, protected activeDevice: object,
-              protected username: string, public promptColor: string = null) {
+    private domSanitizer: DomSanitizer, protected terminal: TerminalAPI, protected activeDevice: object,
+    protected username: string, public promptColor: string = null) {
     super();
   }
 
@@ -171,6 +174,100 @@ export class DefaultTerminalState extends CommandTerminalState {
       this.terminal.outputText('Online players: ' + r.online);
     });
   }
+
+  makeid(length) {
+    let result = '';
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!%$&/()][{}?+*~#"_-.,;:|<>^°´`';
+    let charactersLength = characters.length;
+    for (let i = 0; i < length; i++) {
+      result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+    return result;
+  }
+
+  random(args: string[]) {
+    if (args.length === 1) {
+      const N = parseInt(args[0]);
+      this.terminal.outputText(this.makeid(N));
+    } else {
+      this.terminal.outputText('random requires one argument : length');
+    }
+  }
+
+
+  changeContent(args: string[]) {
+    if (args.length > 1) {
+      let path: Path;
+      try {
+        path = Path.fromString(args[0], this.working_dir);
+        args.shift();
+      } catch {
+        this.terminal.outputText('The specified path is not valid');
+        return;
+      }
+
+      let new_content = '';
+      for (let i = 0; i < args.length; i++) {
+        if (i === 0) {
+          new_content += args[i];
+        } else {
+          new_content += ' ' + args[i];
+        }
+      }
+
+      this.fileService.getFromPath(this.activeDevice['uuid'], path).subscribe(file => {
+        if (!file.is_directory) {
+          this.fileService.changeFileContent(this.activeDevice['uuid'], file.uuid, new_content);
+        } else {
+          this.terminal.outputText('That is a directory');
+        }
+      }, error => {
+        if (error.message === 'file_not_found') {
+          this.terminal.outputText('That file does not exist');
+        } else {
+          console.warn(error.message);
+        }
+      });
+
+    } else {
+      this.terminal.outputText('At least 2 arguments are expected');
+    }
+  }
+
+
+  run(args: string[]) {
+    if (args.length === 1) {
+      let path: Path;
+      try {
+        path = Path.fromString(args[0], this.working_dir);
+      } catch {
+        this.terminal.outputText('The specified path is not valid');
+        return;
+      }
+      this.fileService.getFromPath(this.activeDevice['uuid'], path).subscribe(file => {
+        if (!file.is_directory) {
+
+          const commands = file.content.split(';');
+
+          commands.forEach(command => {
+            this.execute(command);
+          });
+        } else {
+          this.terminal.outputText('That is a directory');
+        }
+      }, error => {
+        if (error.message === 'file_not_found') {
+          this.terminal.outputText('That file does not exist');
+        } else {
+          console.warn(error.message);
+        }
+      });
+    } else {
+      this.terminal.outputText('One argument is expected');
+    }
+    return;
+  }
+
 
   hostname(args: string[]) {
     if (args.length === 1) {
@@ -604,8 +701,8 @@ export class DefaultTerminalState extends CommandTerminalState {
 
       } else if (args[0] === 'create') {
         (path.path.length > 1
-            ? this.fileService.getFromPath(this.activeDevice['uuid'], new Path(path.path.slice(0, -1), path.parentUUID))
-            : of({ uuid: path.parentUUID })
+          ? this.fileService.getFromPath(this.activeDevice['uuid'], new Path(path.path.slice(0, -1), path.parentUUID))
+          : of({ uuid: path.parentUUID })
         ).subscribe(dest => {
           this.fileService.getFromPath(this.activeDevice['uuid'], new Path(path.path.slice(-1), dest.uuid)).subscribe(() => {
             this.terminal.outputText('That file already exists');
@@ -691,12 +788,12 @@ export class DefaultTerminalState extends CommandTerminalState {
                   destination_uuid: receiver,
                   usage: usage
                 }).subscribe(response => {
-                    if (response.error == null) {
-                      this.terminal.outputText('Successfully sent ' + amount + ' to ' + receiver);
-                    } else {
-                      this.terminal.outputText(response.error);
-                    }
+                  if (response.error == null) {
+                    this.terminal.outputText('Successfully sent ' + amount + ' to ' + receiver);
+                  } else {
+                    this.terminal.outputText(response.error);
                   }
+                }
                 );
               });
             } else {
@@ -1406,9 +1503,9 @@ export class BruteforceTerminalState extends ChoiceTerminalState {
   intervalHandle;
 
   constructor(terminal: TerminalAPI,
-              private domSanitizer: DomSanitizer,
-              private callback: (response: boolean) => void,
-              private startSeconds: number = 0) {
+    private domSanitizer: DomSanitizer,
+    private callback: (response: boolean) => void,
+    private startSeconds: number = 0) {
     super(terminal);
 
     this.intervalHandle = setInterval(() => {
